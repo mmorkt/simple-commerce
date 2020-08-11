@@ -5,6 +5,7 @@ namespace DoubleThreeDigital\SimpleCommerce\Gateways;
 use DoubleThreeDigital\SimpleCommerce\Contracts\Gateway;
 use DoubleThreeDigital\SimpleCommerce\Exceptions\StripeSecretMissing;
 use DoubleThreeDigital\SimpleCommerce\Facades\Currency;
+use DoubleThreeDigital\SimpleCommerce\Gateways\Extend\GatewayCharge;
 use Statamic\Facades\Site;
 use Stripe\PaymentIntent;
 use Stripe\PaymentMethod;
@@ -32,19 +33,22 @@ class StripeGateway implements Gateway
         ];
     }
 
-    public function purchase(array $data, $request): array
+    public function purchase(array $data, $request): GatewayCharge
     {
         $this->setUpWithStripe();
 
         $paymentMethod = PaymentMethod::retrieve($data['payment_method']);
 
-        return [
-            'id'       => $paymentMethod->id,
-            'object'   => $paymentMethod->object,
-            'card'     => $paymentMethod->card->toArray(),
-            'customer' => $paymentMethod->customer,
-            'livemode' => $paymentMethod->livemode,
-        ];
+        return new GatewayCharge($paymentMethod->id, $paymentMethod->created, [
+            'card' => [
+                'brand' => $paymentMethod->card->brand,
+                'country' => $paymentMethod->card->country,
+                'expiry_month' => $paymentMethod->card->exp_month,
+                'expiry_year' => $paymentMethod->card->exp_year,
+                'last_four' => $paymentMethod->card->last4,
+            ],
+            'stripe_metadata' => $paymentMethod->metadata,
+        ]);
     }
 
     public function purchaseRules(): array
@@ -54,13 +58,17 @@ class StripeGateway implements Gateway
         ];
     }
 
-    public function getCharge(array $data): array
+    public function getCharge(array $data): GatewayCharge
     {
-        return [];
+        // TODO: finish this function
+
+        return new GatewayCharge(1, 2, 3);
     }
 
     public function refundCharge(array $data): array
     {
+        // TODO: finish this function
+
         return [];
     }
 

@@ -3,6 +3,7 @@
 namespace DoubleThreeDigital\SimpleCommerce\Gateways;
 
 use DoubleThreeDigital\SimpleCommerce\Contracts\Gateway;
+use DoubleThreeDigital\SimpleCommerce\Gateways\Extend\GatewayCharge;
 
 class DummyGateway implements Gateway
 {
@@ -16,7 +17,7 @@ class DummyGateway implements Gateway
         return [];
     }
 
-    public function purchase(array $data, $request): array
+    public function purchase(array $data, $request): GatewayCharge
     {
         // if ($data['card_number'] === '1212 1212 1212 1212') return null;
 
@@ -33,14 +34,12 @@ class DummyGateway implements Gateway
         ];
     }
 
-    public function getCharge(array $data): array
+    public function getCharge(array $data): GatewayCharge
     {
-        return [
-            'id'        => '123456789abcdefg',
+        return new GatewayCharge('123456789abcdefg', (string) now()->subDays(14), [
             'last_four' => '4242',
-            'date'      => (string) now()->subDays(14),
-            'refunded'  => false,
-        ];
+            'last_four' => '4242',
+        ]);
     }
 
     public function refundCharge(array $data): array
