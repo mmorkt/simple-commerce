@@ -3,6 +3,7 @@
 namespace DoubleThreeDigital\SimpleCommerce\Tests\Gateways;
 
 use DoubleThreeDigital\SimpleCommerce\Gateways\DummyGateway;
+use DoubleThreeDigital\SimpleCommerce\Gateways\Extend\GatewayCharge;
 use DoubleThreeDigital\SimpleCommerce\Tests\TestCase;
 use Illuminate\Http\Request;
 use Spatie\TestTime\TestTime;
@@ -35,13 +36,9 @@ class DummyGatewayTest extends TestCase
             'card_number' => '4242 4242 4242 4242',
         ], new Request());
 
-        $this->assertIsArray($purchase);
-        $this->assertSame([
-            'id'        => '123456789abcdefg',
-            'last_four' => '4242',
-            'date'      => (string) now()->subDays(14),
-            'refunded'  => false,
-        ], $purchase);
+        $this->assertIsObject($purchase);
+        $this->assertSame($purchase->id, '123456789abcdefg');
+        $this->assertSame($purchase->metadata['last_four'], '4242');
     }
 
     // /** @test */
@@ -75,13 +72,9 @@ class DummyGatewayTest extends TestCase
 
         $charge = (new DummyGateway())->getCharge([]); // Most of the time, we'll pass in an entry, but we'll just keep it empty here
 
-        $this->assertIsArray($charge);
-        $this->assertSame([
-            'id'        => '123456789abcdefg',
-            'last_four' => '4242',
-            'date'      => (string) now()->subDays(14),
-            'refunded'  => false,
-        ], $charge);
+        $this->assertIsObject($charge);
+        $this->assertSame($charge->id, '123456789abcdefg');
+        $this->assertSame($charge->metadata['last_four'], '4242');
     }
 
     /** @test */

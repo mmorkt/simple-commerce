@@ -43,8 +43,7 @@ class StripeGatewayTest extends TestCase
     {
         $charge = (new StripeGateway())->getCharge([]);
 
-        $this->assertIsArray($charge);
-        $this->assertSame([], $charge);
+        $this->assertIsObject($charge);
     }
 
     /** @test */

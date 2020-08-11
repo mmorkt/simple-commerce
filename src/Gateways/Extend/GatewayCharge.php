@@ -14,4 +14,13 @@ class GatewayCharge
         $this->date = $date;
         $this->metadata = $metadata;
     }
+
+    public function toArray(): array
+    {
+        return [
+            'id'        => $this->id,
+            'date'      => $this->date,
+            'metadata'  => $this->metadata,
+        ];
+    }
 }

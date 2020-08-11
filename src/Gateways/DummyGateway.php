@@ -38,7 +38,6 @@ class DummyGateway implements Gateway
     {
         return new GatewayCharge('123456789abcdefg', (string) now()->subDays(14), [
             'last_four' => '4242',
-            'last_four' => '4242',
         ]);
     }
 

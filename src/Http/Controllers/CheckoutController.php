@@ -2,11 +2,14 @@
 
 namespace DoubleThreeDigital\SimpleCommerce\Http\Controllers;
 
+use DoubleThreeDigital\SimpleCommerce\Contracts\CartRepository;
 use DoubleThreeDigital\SimpleCommerce\Events\PostCheckout;
 use DoubleThreeDigital\SimpleCommerce\Events\Precheckout;
 use DoubleThreeDigital\SimpleCommerce\Exceptions\CustomerNotFound;
 use DoubleThreeDigital\SimpleCommerce\Facades\Coupon;
 use DoubleThreeDigital\SimpleCommerce\Facades\Customer;
+use DoubleThreeDigital\SimpleCommerce\Factories\GatewayFactory;
+use DoubleThreeDigital\SimpleCommerce\Gateways\Extend\GatewayCharge;
 use DoubleThreeDigital\SimpleCommerce\Http\Requests\Checkout\StoreRequest;
 use DoubleThreeDigital\SimpleCommerce\SessionCart;
 use Illuminate\Support\Arr;
@@ -16,39 +19,55 @@ class CheckoutController extends BaseActionController
 {
     use SessionCart;
 
-    // After a key has been used, put it here so we exclude it on update.
-    public $excludedKeys = ['_token', '_params', '_redirect'];
+    protected CartRepository $cart;
+    protected StoreRequest $request;
+    protected array $excludedKeys = ['_token', '_params', '_redirect'];
 
     public function store(StoreRequest $request)
     {
-        $cart = $this->getSessionCart();
-        $gateway = (new $request->gateway());
+        $this->cart = $this->getSessionCart();
+        $this->request = $request;
 
-        $requestData = Arr::except($request->all(), $this->excludedKeys);
-        $cartData = [];
+        $this
+            ->handleValidation()
+            ->attachCustomer()
+            ->processPayment()
+            ->redeemCoupon()
+            ->processOrderFields()
+            ->completeOrder();
 
-        event(new PreCheckout($requestData));
+        return $this->withSuccess($request);
+    }
 
-        $request->validate($gateway->purchaseRules());
-        $request->validate([
-            'name'  => 'sometimes|string',
-            'email' => 'sometimes|email',
+    protected function handleValidation()
+    {
+        $gateway = (new GatewayFactory)->make($this->request->get('gateway'));
+
+        $this->request->validate($gateway->purchaseRules());
+        // $this->request->validate($this->cart->entry()->blueprint()->fields()->validator()->rules());
+        $this->request->validate([
+            'name' => ['sometimes', 'string'],
+            'email' => ['sometimes', 'email'],
         ]);
-        // $request->validate($cart->entry()->blueprint()->fields()->validator()->rules());
 
-        if (isset($requestData['name']) && isset($requestData['email'])) {
+        return $this;
+    }
+
+    protected function attachCustomer()
+    {
+        if ($this->request->has('name') && $this->request->has('email')) {
             try {
-                $customer = Customer::findByEmail($requestData['email']);
+                $customer = Customer::findByEmail($this->request->get('email'));
             } catch (CustomerNotFound $e) {
                 $customer = Customer::make()
                     ->data([
-                        'name'  => $requestData['name'],
-                        'email' => $requestData['email'],
+                        'name'  => $this->request->get('name'),
+                        'email' => $this->request->get('email'),
                     ])
                     ->save();
             }
 
-            $cart->update([
+            $this->cart->update([
                 'customer' => $customer->id,
             ]);
 
@@ -56,40 +75,81 @@ class CheckoutController extends BaseActionController
             $this->excludedKeys[] = 'email';
         }
 
-        $cartData['gateway'] = $requestData['gateway'];
-        $cartData['gateway_data'] = $gateway->purchase($requestData, $request);
+        return $this;
+    }
 
-        if ($cart->entry()->data()->get('coupon') != null) {
-            $coupon = Coupon::find($cart->entry()->data()->get('coupon'));
+    protected function processPayment()
+    {
+        event(new PreCheckout($this->requestData()));
+
+        $gateway = (new GatewayFactory)->make($this->request->get('gateway'));
+        $purchase = $gateway->purchase($this->requestData(), $this->request);
+
+        if ($purchase instanceof GatewayCharge) {
+            $this->cart->update([
+                'gateway' => $this->request->get('gateway'),
+                'gateway_data' => $purchase->toArray(),
+            ]);
+        }
+
+        // TODO: if instance of GatewayError, return with error bag
+
+        $this->excludedKeys[] = 'gateway';
+        
+        foreach ($gateway->purchaseRules() as $key => $value) {
+            $this->excludedKeys[] = $key;
+        }
+
+        return $this;
+    }
+
+    protected function redeemCoupon()
+    {
+        if (isset($this->cart->data['coupon'])) {
+            $coupon = Coupon::find($this->cart->data['coupon']);
 
             $coupon->update([
                 'redeemed' => $coupon->data['redeemed']++,
             ]);
         }
 
-        $this->excludedKeys[] = 'gateway';
-        foreach ($gateway->purchaseRules() as $key => $rule) {
-            $this->excludedKeys[] = $key;
-        }
+        return $this;
+    }
 
-        foreach (Arr::except($requestData, $this->excludedKeys) as $key => $value) {
+    protected function processOrderFields()
+    {
+        $data = $this->requestData();
+
+        foreach ($data as $key => $value) {
             if ($value === 'on') {
                 $value = true;
-            } elseif ($value === 'off') {
+            }
+
+            if ($value === 'off') {
                 $value = false;
             }
 
-            $cartData[$key] = $value;
+            $data[$key] = $value;
         }
 
-        $cart
-            ->update($cartData)
-            ->markAsCompleted();
+        $this->cart->update($data);
 
-        Session::forget(config('simple-commerce.cart_key'));
+        return $this;
+    }
 
-        event(new PostCheckout(Arr::except($requestData, $this->excludedKeys)));
+    protected function completeOrder()
+    {
+        $this->cart->markAsCompleted();
+        
+        event(new PostCheckout($this->requestData(), $this->excludedKeys));
 
-        return $this->withSuccess($request);
+        $this->forgetSessionCart();
+
+        return $this;
+    }
+
+    protected function requestData()
+    {
+        return Arr::except($this->request->all(), $this->excludedKeys);
     }
 }
